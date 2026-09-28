@@ -13,12 +13,12 @@ X-GitHub-Request-Id: F7AA:13BC11:1493C7:156CBA:6ABAB1F2
 x-github-edge-region: southeastasia
 Accept-Ranges: bytes
 Age: 0
-Date: Mon, 28 Sep 2026 18:29:07 GMT
+Date: Mon, 28 Sep 2026 19:52:08 GMT
 Via: 1.1 varnish
-X-Served-By: cache-sin-wsap440080-SIN
-X-Cache: MISS
+X-Served-By: cache-sin-wsap440036-SIN
+X-Cache: HIT
 X-Cache-Hits: 0
-X-Timer: S1790620147.067516,VS0,VE254
+X-Timer: S1790625128.281694,VS0,VE251
 Vary: Accept-Encoding
-X-Fastly-Request-ID: 6a68d3405cedd39c6a38771a66c19624d893269e
+X-Fastly-Request-ID: 50720563718c44b9704554e07c1994c0727f2231
 

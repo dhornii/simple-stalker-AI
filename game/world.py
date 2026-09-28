@@ -1,12 +1,9 @@
 import random
 import math
 
-from pathlib import Path
-import yaml
-
 from collections import deque
 
-default = {
+config = {
     # Generator
     'gen_rad': 20,
     'gen_cd': 10.0,
@@ -15,28 +12,29 @@ default = {
     'cell_size': 40,
     'move_dir': [(1, 0), (-1, 0), (0, 1), (0, -1)],
     'map': [ 
-        "####################", 
-        "#P....#.....o......#",
-        "#.....#............#",
-        "#..oo.....###..N...#",
-        "#..oo.....#........#",
-        "#.........#..oo....#",
-        "####..#####..##....#",
-        "####...####..#######",
-        "#........#.....A...#",
-        "#..oo....#...N.....#",
-        "#........#.........#",
-        "#..N.........o....E#",
-        "####################",
+        # -- Bentuknya harus kotak! --
+        "####################################", # tiap simbol mewakili satu tile world
+        "#P...........#.....o......o........#", # N: noise generator (selanjutnya disebut 'generator' aja)
+        "#....N#......#............oN.......#", # o: obstacle. membatasi langkah saja
+        "#.#####...oo.....###..N...o...oo...#", # #: wall. membatasi langkah dan vision
+        "#....#....oo.....#............oo...#",
+        "##...............#..oo.............#",
+        "###.....###.######.###..############",
+        "####............#..................#",
+        "#####.....N.....#...oo.........N...#",
+        "#####...........#..................#",
+        "####......###......###.....#.......#",
+        "###.......#..........o....##.......#",
+        "##...N.......oo..........###.......#",
+        "#..................#....####.......#",
+        "#.......#####.####.#########..######",
+        "#..o............#.....A.......#...E#",
+        "#..oo.....oo....#...N......ooo#....#",
+        "#..o..o.........#..........o.......#",
+        "#.........N.........o..............#",
+        "####################################",
     ]
 }
-
-parent = Path(__file__).resolve().parent.parent
-with open(parent / 'config' / 'config.yaml') as config_file:
-    config = yaml.safe_load(config_file)
-
-gen_config = config.get('Generator', {})
-world_config = config.get('World', {})
 
 class Generator:
     """
@@ -58,8 +56,8 @@ class Generator:
     catatan tentang posisi X-Y di pygame --> [Help! How Do I move An Image](https://www.pygame.org/docs/tut/MoveIt.html?highlight=position)
     section *'Screen Coordinates'*
     """
-    GEN_RADIUS = gen_config.get('radius', default['gen_rad']) 
-    GEN_COOLDOWN = gen_config.get('cooldown', default['gen_cd'])
+    GEN_RADIUS = config['gen_rad'] 
+    GEN_COOLDOWN = config['gen_cd']
 
     def __init__(self, pos:tuple):
         self.pos = pos
@@ -110,13 +108,12 @@ class World:
         MOVE_DIR | -. tuple berisi arah jalan (4 macam sesuai arrow-keys)
     """
 
-    CELL_SIZE = world_config.get('cell_size', default['cell_size'])
-    MAP = world_config.get('map', default['map'])
+    CELL_SIZE = config['cell_size']
+    MAP = config['map']
     MAP_W = len(MAP[0])
     MAP_H = len(MAP)          
 
-    MOVE_DIR = world_config.get('move_dir', default['move_dir'])
-    MOVE_DIR = [tuple(item) for item in MOVE_DIR]
+    MOVE_DIR = config['move_dir']
 
     def __init__(self):
 

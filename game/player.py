@@ -1,9 +1,6 @@
 from world import World
 
-from pathlib import Path
-import yaml
-
-default = {
+config = {
     'walk_step': 0.24,
     'walk_step': 0.24,
     'walk_noise_rad': 3,
@@ -11,12 +8,6 @@ default = {
     'run_noise_rad': 7,
     'noise_spacing': 0.7
 }
-
-parent = Path(__file__).resolve().parent.parent
-with open(parent / 'config' / 'config.yaml') as config_file:
-    config = yaml.safe_load(config_file)
-
-player_config = config.get('Player', {})
 
 class Player:
     """
@@ -35,11 +26,11 @@ class Player:
         
     **inisiasilasi** class ini butuh input **`pos`**.
     """
-    WALK_STEP = player_config.get('walk_step', default['walk_step'])    
-    RUN_STEP  = player_config.get('run_step', default['run_step'])      
-    WALK_NOISE_RADIUS = player_config.get('walk_noise_rad', default['walk_noise_rad'])
-    RUN_NOISE_RADIUS = player_config.get('run_noise_rad', default['run_noise_rad'])     
-    NOISE_SPACING = player_config.get('noise_spacing', default['noise_spacing'])     
+    WALK_STEP = config['walk_step']    
+    RUN_STEP  = config['run_step']      
+    WALK_NOISE_RADIUS = config['walk_noise_rad']
+    RUN_NOISE_RADIUS = config['run_noise_rad']
+    NOISE_SPACING = config['noise_spacing']
     
     def __init__(self, pos:tuple):
         self.pos = pos

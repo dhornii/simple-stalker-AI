@@ -2,13 +2,10 @@ import random
 import math
 from collections import namedtuple
 
-from pathlib import Path
-import yaml
-
 from world import World
 from player import Player
 
-default = {
+config = {
     # Director
     'sigma': {'walk': 5.5, 'run': 4.0},
     'cooldown': {'walk': 5.0, 'run': 3.0},
@@ -26,18 +23,11 @@ default = {
     'dist_penalty': 0.08
 }
 
-parent = Path(__file__).resolve().parent.parent
-with open(parent / 'config' / 'config.yaml') as config_file:
-    config = yaml.safe_load(config_file)
-
-director_config = config.get('Director', {})    # ambil dari dictionary config
-alien_config = config.get('Alien', {})          # get function --> get('key', default-value)
-
 Clue = namedtuple("Clue", "pos sigma source time")
 
 class Director:
-    DIRECTOR_SIGMA = director_config.get('sigma', default['sigma'])
-    DIRECTOR_COOLDOWN = director_config.get('cooldown', default['cooldown'])
+    DIRECTOR_SIGMA = config['sigma']
+    DIRECTOR_COOLDOWN = config['cooldown']
 
     def __init__(self, world:World):
         self.world = world
@@ -70,16 +60,15 @@ class Director:
 
 class Alien:
     # Alien
-    MISS    = alien_config.get('miss', default['miss'])     # P(not seeing player | player is in a cell I can see)
-    VISION  = alien_config.get('vision', default['vision'])
-    OUTLIER = alien_config.get('outlier', default['outlier'])
-    STEP_TIME    = alien_config.get('step_time', default['step_time'])
-    PATROL_NODES = alien_config.get('patrol_nodes', default['patrol_nodes'])
-    PATROL_NODES = [tuple(item) for item in PATROL_NODES]
-    DIFFUSE_RATE = alien_config.get('diffuse_rate', default['diffuse_rate'])     # motion model: player may have moved to a neighbour
-    DIST_PENALTY = alien_config.get('dist_penalty', default['dist_penalty'])     # investigation target = belief / (1 + k * distance)
-    SIGHT_TIMEOUT       = alien_config.get('sight_timeout', default['sight_timeout'])
-    INVESTIGATE_TIMEOUT = alien_config.get('investigate_timeout', default['investigate_timeout'])
+    MISS    = config['miss']     # P(not seeing player | player is in a cell I can see)
+    VISION  = config['vision']
+    OUTLIER = config['outlier']
+    STEP_TIME    = config['step_time']
+    PATROL_NODES = config['patrol_nodes']
+    DIFFUSE_RATE = config['diffuse_rate']     # motion model: player may have moved to a neighbour
+    DIST_PENALTY = config['dist_penalty']     # investigation target = belief / (1 + k * distance)
+    SIGHT_TIMEOUT       = config['sight_timeout']
+    INVESTIGATE_TIMEOUT = config['investigate_timeout']
 
     def __init__(self, world:World, log):
 

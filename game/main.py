@@ -33,7 +33,6 @@ Goal: reach the green EXIT without being caught.
 """
 
 import math
-import sys
 
 from world import World, Generator
 from player import Player
@@ -358,7 +357,4 @@ class Game:
 
 if __name__ == "__main__":
     game = Game()
-
     asyncio.run(game.run())
-    pygame.quit()
-    sys.exit()

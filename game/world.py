@@ -1,64 +1,70 @@
-"""
-"""
-
 import random
 import math
+
+from pathlib import Path
+import yaml
+
 from collections import deque
 
-# konstanta class generator
-GEN_RADIUS = 20         # radius luas noise hasil generator
-GEN_COOLDOWN = 10.0     # (detik)
+default = {
+    'gen_rad': 20,
+    'gen_cd': 10.0,
 
+    'cell_size': 40,
+    'move_dir': [(1, 0), (-1, 0), (0, 1), (0, -1)],
+    'map': [ 
+        # N: noise generator (selanjutnya disebut 'generator' aja)
+        # o: obstacle. membatasi langkah saja 
+        # #: wall. membatasi langkah dan vision
+        "####################", 
+        "#P....#.....o......#",
+        "#.....#............#",
+        "#..oo.....###..N...#",
+        "#..oo.....#........#",
+        "#.........#..oo....#",
+        "####..#####..##....#",
+        "####...####..#######",
+        "#........#.....A...#",
+        "#..oo....#...N.....#",
+        "#........#.........#",
+        "#..N.........o....E#",
+        "####################",
+    ]
+}
 
-# konfigurasi dan konstanta class map
-MAP = [ 
-    # N: noise generator (selanjutnya disebut 'generator' aja)
-    # o: obstacle. membatasi langkah saja 
-    # #: wall. membatasi langkah dan vision
-    "####################", 
-    "#P....#.....o......#",
-    "#.....#............#",
-    "#..oo.....###..N...#",
-    "#..oo.....#........#",
-    "#.........#..oo....#",
-    "####.######.###.####",
-    "#........#.........#",
-    "#..N.....#...oo....#",
-    "#........#.........#",
-    "#..###......###....#",
-    "#..#..........#....#",
-    "#.....oo.......o...#",
-    "#...........#......#",
-    "######.####.########",
-    "#........#.....A...#",
-    "#..oo....#...N.....#",
-    "#........#.........#",
-    "#..N.........o....E#",
-    "####################",
-]
-MAP_W = 20  # (jumlah tile) panjang map
-MAP_L = 20  # (jumlah tile) lebar map
-CELL_SIZE = 40   # (pixel) ukuran tile = CELL_SIZE * CELL_SIZE
-MOVE_DIR = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+parent = Path(__file__).resolve().parent.parent
+with open(parent / 'config' / 'config.yaml') as config_file:
+    config = yaml.safe_load(config_file)
 
+gen_config = config.get('Generator', {})
+world_config = config.get('World', {})
 
 class Generator:
     """
     Objek yang bisa menghasilkan suara untuk mengecoh alien (stalker agent),
     bisa nyala otomatis setelah malfungsi atau di-trigger manual sama playernya.
 
+    @Init_Params:
+        **`pos`**: koordinat tile (X-Y) tempat generator
+
     @Attributes:
-        **`pos (tuple)`**: posisi X-Y tempat generatornya berdasarkan map.
+        **`pos (tuple)`**: koordinat tile (X-Y) objek ini berdasarkan tiles di map
         **`cooldown (float)`**: detik. jeda waktu sampai bisa dinyalakan lagi
         **`malfunction_time (float)`**: detik. jeda waktu otomatis dan random 8 - 13 detik
 
-    **inisiasilasi** objek butuh input **`pos`**.
+    **inisiasilasi** class ini butuh input **`pos`**.
 
     catatan tentang posisi X-Y di pygame --> [Help! How Do I move An Image](https://www.pygame.org/docs/tut/MoveIt.html?highlight=position)
     section *'Screen Coordinates'*
     """
 
+    
+    # konstanta class generator
+    GEN_RADIUS   = gen_config.get('radius', default['gen_rad'])         # (tile) radius luas noise hasil generator
+    GEN_COOLDOWN = gen_config.get('cooldown', default['gen_cd'])      # (detik)
+
     def __init__(self, pos:tuple):
+
         self.pos = pos
         self.cooldown = 0.0
         self.malfunction_time = random.uniform(8.0, 13.0) # random 8-13 detik generator malfungsi (kemungkinan tiap waktunya sama)
@@ -67,7 +73,7 @@ class Generator:
         return self.cooldown <= 0
 
     def trigger(self):  # kalau ditrigger manual
-        self.cooldown = GEN_COOLDOWN
+        self.cooldown = self.GEN_COOLDOWN
         self.malfunction_time = random.uniform(8.0, 13.0)
 
     def tick_update(self, dt:float):
@@ -75,7 +81,7 @@ class Generator:
         update waktu cooldown atau malfungsinya tiap tick (periode) game.
 
         @params:
-            dt: periode (detik), waktu untuk update kondisi generator 
+            dt: periode (detik), waktu untuk update frame/tick 
         """
         self.cooldown = max(0.0, self.cooldown - dt)
         self.malfunction_time -= dt
@@ -88,17 +94,39 @@ class Generator:
         return False
 
 class World:
+    """
+    Mengatur semua mekanisme terkait map dan world game secara umum, contohnya berupa sifat-sifat tile in-game serta
+    bagaimana interaksinya terhadap player. Implementasi Breadth First Search (BFS) ada  di method class ini
+    (tepatnya 2 method akhir: **`bfs_path`** dan **`bfs_dist`**) sebagai pembentuk path jalan agent alien.
 
-    def __init__(self, map_layout):
-        # pastikan luas / dimensi map sesuai dengan konstanta map 
-        assert len(map_layout) == MAP_L and all(len(r) == MAP_W for r in map_layout)
+    Sisa method mengatur bagaimana alien dapat melihat playernya dan sistem + mekanisme tile (e.g., *walkable*, *is_wall/menutup line of sight*,
+    dan *boundary check*)
+    
+    @Attributes:
+        **`tiles (list)`**: list 2 dimensi untuk mengakses koordinat petak/tile tertentu
+        **`generators (list)`**: list seluruh koordinat yang ditempati generator
+        **`player_start (tuple)`**: koordinat spawn player. diisi otomatis berdasarkan **`map_layout`**
+        **`alien_start (tuple)`**: koordinat spawn alien. diisi otomatis berdasarkan **`map_layout`**
+        **`exit (tuple)`**: koordinat tile exit. diisi otomatis berdasarkan **`map_layout`**
+        **`walkalbe_tiles (list)`**: list semua koordinat tile *walkable*. diisi otomatis berdasarkan **`map_layout`**
+    """
 
-        self.tiles = [list(r) for r in map_layout]
+    CELL_SIZE = world_config.get('cell_size', default['cell_size'])   # (pixel) ukuran tile = CELL_SIZE * CELL_SIZE
+    MAP       = world_config.get('map', default['map'])
+    MAP_W     = len(MAP[0])
+    MAP_H     = len(MAP)          
+
+    MOVE_DIR  = world_config.get('move_dir', default['move_dir'])
+    MOVE_DIR  = [tuple(item) for item in MOVE_DIR]
+
+    def __init__(self):
+
+        self.tiles = [list(r) for r in self.MAP]
         self.player_start = self.alien_start = self.exit = None
         self.generators = []
 
-        for y in range(MAP_L):
-            for x in range(MAP_W):
+        for y in range(self.MAP_H):
+            for x in range(self.MAP_W):
 
                 element = self.tiles[y][x]
                 if element == 'P':
@@ -115,8 +143,8 @@ class World:
                         Generator(pos = (x, y))
                     )
 
-        self.walkable_cells = [
-            (x, y) for y in range(MAP_L) for x in range(MAP_W) if self.walkable(x, y)
+        self.walkable_tiles = [
+            (x, y) for y in range(self.MAP_H) for x in range(self.MAP_W) if self.walkable(x, y)
         ]
 
 
@@ -125,7 +153,7 @@ class World:
         """
         return True kalau koordinat (x,y) ada di dalam map
         """
-        return (0 <= x < MAP_W) and (0 <= y < MAP_L)
+        return (0 <= x < self.MAP_W) and (0 <= y < self.MAP_H)
 
     def walkable(self, x:int, y:int):
         """
@@ -146,11 +174,12 @@ class World:
         x, y = coord
         nearby_walkable = []
 
-        for dx, dy in MOVE_DIR:
+        for dx, dy in self.MOVE_DIR:
             if self.walkable(x + dx, y + dy):
-                nearby_walkable.append(x + dx, y + dy)
+                nearby_walkable.append((x + dx, y + dy))
 
         return nearby_walkable
+    
 
     # == Kelompok Utilities Terkait Sight Antara Player dengan Alien == | Untuk menentukan apakah alien melihat player
     def bresenham_line(self, start:tuple, end:tuple):
@@ -231,6 +260,7 @@ class World:
                     visible_cells.append((x, y))
 
         return visible_cells
+    
 
     # == Kelompok Implementasi BFS Untuk Pathing Jalan Alien ==
     def bfs_path(self, start:tuple, goal:tuple):
@@ -292,7 +322,7 @@ class World:
             for n in self.walkable_neighbors(current):
                 if n not in dist:
 
-                    dist[n] = dist[current] + 1
+                    dist[n] = dist[current] + 1 # hitung jarak + 1 setiap mengunjungi tile baru
                     queue.append(n)
         
         return dist

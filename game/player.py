@@ -1,30 +1,78 @@
-WALK_STEP, RUN_STEP = 0.24, 0.12          # seconds per cell
-WALK_RADIUS, RUN_RADIUS = 3, 7            # noise radius in cells
-NOISE_MEMORY = 0.7                        # how long after a step we count as "noisy"
+from world import World
+
+from pathlib import Path
+import yaml
+
+default = {
+    'walk_step': 0.24,
+    'walk_step': 0.24,
+    'walk_noise_rad': 3,
+    'run_step': 0.12,
+    'run_noise_rad': 7,
+    'noise_spacing': 0.7
+}
+
+parent = Path(__file__).resolve().parent.parent
+with open(parent / 'config' / 'config.yaml') as config_file:
+    config = yaml.safe_load(config_file)
+
+player_config = config.get('Player', {})
 
 class Player:
-    def __init__(self, pos):
+    """
+    Entitas aktif yang dikendalikan oleh player melalui input 
+
+    @Init_Params:
+        pos: koordinat (X-Y) awal objek ini berdasarkan tiles di map
+    
+    @Attributes:
+        pos (tuple): koordinat tile (X-Y) tempat player 
+        timer (float): detik. jeda waktu sampai bisa bergerak (update frame)
+        last_move (float): detik. waktu sejak terakhir bergerak
+        last_run (bool): apakah player berlari di frame sebelumnya
+    
+    **inisiasilasi** class ini butuh input **`pos`**.
+    """
+    WALK_STEP = player_config.get('walk_step', default['walk_step'])    # detik. waktu untuk melewati 1 tile saat berjalan
+    RUN_STEP  = player_config.get('run_step', default['run_step'])     # detik. waktu untuk melewati 1 tile saat berlari
+    WALK_NOISE_RADIUS = player_config.get('walk_noise_rad', default['walk_noise_rad'])   # tile. radius noise player berjalan
+    RUN_NOISE_RADIUS  = player_config.get('run_noise_rad', default['run_noise_rad'])    # tile. radius noise player berlari
+    NOISE_SPACING     = player_config.get('noise_spacing', default['noise_spacing'])     # detik. jeda waktu sampai player bisa membuat noise lagi
+    
+    def __init__(self, pos:tuple):
         self.pos = pos
         self.timer = 0.0
         self.last_move = -999.0
         self.last_run = False
 
     @property
-    def noise_radius(self):
-        return RUN_RADIUS if self.last_run else WALK_RADIUS
+    def set_noise_radius(self):
+        return self.RUN_NOISE_RADIUS if self.last_run else self.WALK_NOISE_RADIUS
 
-    def noisy_recently(self, now):
-        return now - self.last_move < NOISE_MEMORY
+    def noise_interlude(self, time_now:float):
+        """
+        Return True kalau player habis mengeluarkan noise dan
+        sekarang lagi jeda waktu. Bisa dikatakan baru saja bergerak
+        """
+        return (time_now - self.last_move) < self.NOISE_SPACING
 
-    def update(self, dt, direction, running, world, now):
-        """Returns True if the player moved this frame."""
+    def tick_update(self, dt:float, direction:tuple, running:bool, world:World, time_now:float):
+        """
+        Returns True kalau player berhasil bergerak di frame/tick saat ini
+        
+        @Params:
+            dt: (detik) periode waktu untuk update frame/tick
+            direction: 
+        """
         self.timer = max(0.0, self.timer - dt)
-        if direction and self.timer <= 0:
-            nx, ny = self.pos[0] + direction[0], self.pos[1] + direction[1]
-            if world.walkable(nx, ny):
-                self.pos = (nx, ny)
-                self.timer = RUN_STEP if running else WALK_STEP
-                self.last_move = now
+        if direction and (self.timer <= 0):
+            new_x, new_y = self.pos[0] + direction[0], self.pos[1] + direction[1]
+            
+            if world.walkable(new_x, new_y):
+                self.pos = (new_x, new_y)
+                self.timer = self.RUN_STEP if running else self.WALK_STEP
+                self.last_move = time_now
                 self.last_run = running
                 return True
+            
         return False

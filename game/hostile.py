@@ -2,6 +2,20 @@ import random
 import math
 from collections import namedtuple
 
+from world import World
+from player import Player
+
+PATROL_NODES = [
+    (5, 2),
+    (17, 2),
+    (12, 7),
+    (17, 9),
+    (16, 17),
+    (11, 13),
+    (4, 17),
+    (3, 9)
+]
+
 # Bayesian belief model
 DIFFUSE_RATE = 0.30      # motion model: player may have moved to a neighbour
 CLUE_OUTLIER = 0.02      # likelihood floor (clues can be wrong)
@@ -9,32 +23,34 @@ NOT_SEEN_LIK = 0.03      # P(not seeing player | player is in a cell I can see)
 DIST_PENALTY = 0.08      # investigation target = belief / (1 + k * distance)
 
 # Director
-DIRECTOR_SIGMA = {"walk": 4.0, "run": 3.0}   # vagueness of the clue (cells)
-DIRECTOR_COOLDOWN = {"walk": 4.5, "run": 2.0}
+DIRECTOR_SIGMA = {
+    "walk": 4.0, "run": 3.0
+}
+DIRECTOR_COOLDOWN = {
+    "walk": 4.5, "run": 2.0
+}
 
 # Alien
-STEP_TIME = {"PATROL": 0.34, "INVESTIGATE": 0.26, "HUNT": 0.15}
+STEP_TIME = {
+    "PATROL": 0.34,
+    "INVESTIGATE": 0.26,
+    "HUNT": 0.15
+}
 VISION_RANGE = 7
 LOSE_SIGHT_TIMEOUT = 2.5
 INVESTIGATE_TIMEOUT = 15.0                # give up if no clue for this long
 
 Clue = namedtuple("Clue", "pos sigma source time")
 
-# --------------------------------------------------------------------------- #
-# Director  (omniscient; can only leak vague clues)
-# --------------------------------------------------------------------------- #
-
 class Director:
 
-    def __init__(self, world):
-
+    def __init__(self, world:World):
         self.world = world
-
         self.cooldown = 0.0
 
-    def _noisy_position(self, true_pos, sigma):
+    def leak_position(self, true_pos:tuple, sigma:float):
 
-        for _ in range(50):
+        for i in range(50):
 
             x = round(random.gauss(true_pos[0], sigma))
             y = round(random.gauss(true_pos[1], sigma))
@@ -44,32 +60,28 @@ class Director:
 
         return true_pos
 
-    def update(self, dt, player, now):
+    def update(self, dt:float, player:Player, time_now:float):
 
         self.cooldown = max(0.0, self.cooldown - dt)
 
-        if self.cooldown > 0 or not player.noisy_recently(now):
-            return None                       # silent player = invisible player
+        if self.cooldown > 0 or not player.noise_interlude(time_now):
+            return None                  
 
         mode = "run" if player.last_run else "walk"
         self.cooldown = DIRECTOR_COOLDOWN[mode]
         sigma = DIRECTOR_SIGMA[mode]
 
-        return Clue(self._noisy_position(player.pos, sigma), sigma, "director", now)
-
-# --------------------------------------------------------------------------- #
-# Alien
-# --------------------------------------------------------------------------- #
+        return Clue(self.leak_position(player.pos, sigma), sigma, "director", time_now)
 
 class Alien:
 
-    def __init__(self, world, nodes, log):
+    def __init__(self, world, log):
 
         self.world = world
         self.log = log
         self.pos = world.alien_start
         self.state = "PATROL"
-        self.nodes = nodes
+        self.patrol_nodes = PATROL_NODES
         self.node_idx = 0
         self.path = []
         self.target = None
@@ -87,8 +99,8 @@ class Alien:
 
     def reset_uniform(self):
 
-        p = 1.0 / len(self.world.cells)
-        self.belief = {c: p for c in self.world.cells}
+        p = 1.0 / len(self.world.walkable_tiles)
+        self.belief = {c: p for c in self.world.walkable_tiles}
 
     def _normalize(self):
 
@@ -107,7 +119,7 @@ class Alien:
         new = {c: b * (1 - rate) for c, b in self.belief.items()}
         for c, b in self.belief.items():
 
-            nb = self.world.neighbors(c)
+            nb = self.world.walkable_neighbors(c)
 
             if not nb:
                 new[c] += b * rate
@@ -189,7 +201,7 @@ class Alien:
 
     def update(self, dt, player, now):
 
-        self.sees_player = self.world.can_see(self.pos, player.pos, VISION_RANGE)
+        self.sees_player = self.world.visible(self.pos, player.pos, VISION_RANGE)
 
         if self.sees_player:
             self.last_seen, self.lost_time = player.pos, 0.0
@@ -222,15 +234,15 @@ class Alien:
 
     def _tick_patrol(self):
 
-        if self.pos == self.nodes[self.node_idx]:
+        if self.pos == self.patrol_nodes[self.node_idx]:
 
-            self.node_idx = (self.node_idx + 1) % len(self.nodes)
+            self.node_idx = (self.node_idx + 1) % len(self.patrol_nodes)
 
-        self._step_along(self.world.bfs_path(self.pos, self.nodes[self.node_idx]))
+        self._step_along(self.world.bfs_path(self.pos, self.patrol_nodes[self.node_idx]))
 
     def _tick_investigate(self, now):
 
-        self.diffuse()                                            # predict
+        self.diffuse()
 
         self.bayes_not_seen(self.world.visible_cells(self.pos, VISION_RANGE))
 

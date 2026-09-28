@@ -34,15 +34,13 @@ Goal: reach the green EXIT without being caught.
 
 import math
 import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'game'))
-
-from game.world import World, Generator
-from game.player import Player
-from game.hostile import Director, Alien, Clue
+from world import World, Generator
+from player import Player
+from hostile import Director, Alien, Clue
 
 import pygame
+import asyncio
 
 # --------------------------------------------------------------------------- #
 # Simulation
@@ -324,7 +322,7 @@ class Game:
         pygame.display.flip()
 
     # ---- main loop
-    def run(self):
+    async def run(self):
         while True:
             dt = min(self.clock.tick(60) / 1000.0, 0.05)
             interact = False
@@ -355,9 +353,12 @@ class Game:
 
             self.sim.step(dt, direction, running, interact)
             self.draw()
+            await asyncio.sleep(0)
 
 
 if __name__ == "__main__":
-    Game().run()
+    game = Game()
+
+    asyncio.run(game.run())
     pygame.quit()
     sys.exit()

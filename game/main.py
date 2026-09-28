@@ -128,8 +128,8 @@ class Game:
         pygame.init()
         self.screen = pygame.display.set_mode((self.WIN_W, self.WIN_H))
         pygame.display.set_caption("Stalker AI - Bayesian Alien")
-        self.font = pygame.font.SysFont("dejavusansmono,consolas,menlo,monospace", 14)
-        self.big = pygame.font.SysFont(None, 56)
+        self.font = pygame.font.Font(None, 19)
+        self.big = pygame.font.Font(None, 56)
         self.clock = pygame.time.Clock()
         self.show_belief = True
         self.sim = Simulation()

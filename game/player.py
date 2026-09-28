@@ -20,24 +20,26 @@ player_config = config.get('Player', {})
 
 class Player:
     """
-    Entitas aktif yang dikendalikan oleh player melalui input 
+    Entitas aktif yang dikendalikan oleh player melalui input keyboard: arrow-keys
 
     @Init_Params:
         pos: koordinat (X-Y) awal objek ini berdasarkan tiles di map
     
     @Attributes:
-        pos (tuple): koordinat tile (X-Y) tempat player 
-        timer (float): detik. jeda waktu sampai bisa bergerak (update frame)
-        last_move (float): detik. waktu sejak terakhir bergerak
-        last_run (bool): apakah player berlari di frame sebelumnya
-    
+        **NAMA** | **SATUAN**. **DESKRIPSI**
+        WALK_STEP | detik. waktu untuk melewati 1 tile saat berjalan
+        RUN_STEP  | detik. waktu untuk melewati 1 tile saat berlari
+        WALK_NOISE_RADIUS | tile. radius noise player berjalan
+        RUN_NOISE_RADIUS  | tile. radius noise player berlari
+        NOISE_SPACING     | detik. jeda waktu sampai player bisa membuat noise lagi
+        
     **inisiasilasi** class ini butuh input **`pos`**.
     """
-    WALK_STEP = player_config.get('walk_step', default['walk_step'])    # detik. waktu untuk melewati 1 tile saat berjalan
-    RUN_STEP  = player_config.get('run_step', default['run_step'])     # detik. waktu untuk melewati 1 tile saat berlari
-    WALK_NOISE_RADIUS = player_config.get('walk_noise_rad', default['walk_noise_rad'])   # tile. radius noise player berjalan
-    RUN_NOISE_RADIUS  = player_config.get('run_noise_rad', default['run_noise_rad'])    # tile. radius noise player berlari
-    NOISE_SPACING     = player_config.get('noise_spacing', default['noise_spacing'])     # detik. jeda waktu sampai player bisa membuat noise lagi
+    WALK_STEP = player_config.get('walk_step', default['walk_step'])    
+    RUN_STEP  = player_config.get('run_step', default['run_step'])      
+    WALK_NOISE_RADIUS = player_config.get('walk_noise_rad', default['walk_noise_rad'])
+    RUN_NOISE_RADIUS = player_config.get('run_noise_rad', default['run_noise_rad'])     
+    NOISE_SPACING = player_config.get('noise_spacing', default['noise_spacing'])     
     
     def __init__(self, pos:tuple):
         self.pos = pos
@@ -45,7 +47,6 @@ class Player:
         self.last_move = -999.0
         self.last_run = False
 
-    @property
     def set_noise_radius(self):
         return self.RUN_NOISE_RADIUS if self.last_run else self.WALK_NOISE_RADIUS
 
@@ -62,7 +63,10 @@ class Player:
         
         @Params:
             dt: (detik) periode waktu untuk update frame/tick
-            direction: 
+            direction: arah pergerakan, sesuai input player
+            running: apakah berlari
+            world: world map buat cek apakah tile tujuan walkable
+            time_now: waktu saat ini
         """
         self.timer = max(0.0, self.timer - dt)
         if direction and (self.timer <= 0):

@@ -6,17 +6,19 @@ Two agents cooperate against the player:
 
   * DIRECTOR  - omniscient. Knows the player's true position but is NOT allowed
                 to tell the Alien directly. It can only leak a *vague clue*
-                (a noisy coordinate) whenever the player makes noise.
+                (noisy coordinate) whenever the player makes noise.
   * ALIEN     - blind to the player's real position. It keeps a belief map
                 P(player is in cell c) and updates it with Bayes' rule:
 
                     posterior(c)  ∝  likelihood(observation | c) * prior(c)
 
 Alien state machine
-  PATROL       walk between fixed nodes (BFS shortest paths)
+  PATROL       walk between fixed nodes (BFS shortest paths).
+
   INVESTIGATE  a clue was heard -> Bayes-update the belief map, walk to the most
                promising cell (belief discounted by travel distance). Cells the
                alien looks at and finds empty get *negative evidence*.
+
   HUNT         line of sight to the player -> pursue directly.
                If sight is lost, go to last seen spot, then INVESTIGATE.
 
@@ -31,26 +33,27 @@ Goal: reach the green EXIT without being caught.
 """
 
 import math
-import random
 import sys
-from collections import deque, namedtuple
+import os
 
-from world import World, Generator
-from player import Player
-from hostile import Director, Alien, Clue
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'game'))
+
+from game.world import World, Generator
+from game.player import Player
+from game.hostile import Director, Alien, Clue
 
 import pygame
 
 # --------------------------------------------------------------------------- #
-# Simulation (no rendering - easy to test)
+# Simulation
 # --------------------------------------------------------------------------- #
 class Simulation:
     def __init__(self):
         self.world = World()
         self.time = 0.0
-        self.status = "playing"               # playing | caught | escaped
+        self.status = "playing" # playing | caught | escaped
         self.messages = []
-        self.noise_events = []                # for visual rings
+        self.noise_events = []  # for visual rings
         self.player = Player(self.world.player_start)
         self.director = Director(self.world)
         self.alien = Alien(self.world, self.log)
@@ -82,7 +85,7 @@ class Simulation:
         self.time += dt
 
         if self.player.tick_update(dt, direction, running, self.world, self.time):
-            self.emit_noise(self.player.pos, self.player.set_noise_radius, "footstep")
+            self.emit_noise(self.player.pos, self.player.set_noise_radius(), "footstep")
         if interact:
             self.interact()
         for g in self.world.generators:
@@ -133,6 +136,24 @@ class Game:
         self.show_belief = True
         self.sim = Simulation()
 
+        # 1. Stiker Player (Tikus)
+        self.img_player = pygame.image.load('assets/tikus.png').convert_alpha()
+        self.img_player = pygame.transform.scale(self.img_player, (World.CELL_SIZE, World.CELL_SIZE))
+
+        # 2. Stiker Alien (Kucing - 3 Ekspresi)
+        self.img_cat_patrol = pygame.image.load('assets/kucing_patrol.png').convert_alpha()
+        self.img_cat_patrol = pygame.transform.scale(self.img_cat_patrol, (World.CELL_SIZE, World.CELL_SIZE))
+
+        self.img_cat_invest = pygame.image.load('assets/kucing_invest.png').convert_alpha()
+        self.img_cat_invest = pygame.transform.scale(self.img_cat_invest, (World.CELL_SIZE, World.CELL_SIZE))
+
+        self.img_cat_hunt = pygame.image.load('assets/kucing_hunt.png').convert_alpha()
+        self.img_cat_hunt = pygame.transform.scale(self.img_cat_hunt, (World.CELL_SIZE, World.CELL_SIZE))
+
+        # gambar tembok
+        self.img_wall = pygame.image.load('assets/stone.png').convert()
+        self.img_wall = pygame.transform.scale(self.img_wall, (World.CELL_SIZE, World.CELL_SIZE))
+
     @staticmethod
     def rect(c):
         return pygame.Rect(c[0] * World.CELL_SIZE, c[1] * World.CELL_SIZE, World.CELL_SIZE, World.CELL_SIZE)
@@ -152,7 +173,7 @@ class Game:
                 r = self.rect((x, y))
                 t = w.tiles[y][x]
                 if t == "#":
-                    pygame.draw.rect(self.screen, COLORS["wall"], r)
+                    self.screen.blit(self.img_wall, (x * World.CELL_SIZE, y * World.CELL_SIZE))
                 else:
                     pygame.draw.rect(self.screen, COLORS["floor"], r)
                     pygame.draw.rect(self.screen, COLORS["grid"], r, 1)
@@ -205,10 +226,43 @@ class Game:
 
     def draw_agents(self):
         p, a = self.sim.player, self.sim.alien
-        pygame.draw.circle(self.screen, COLORS["player_run"] if p.last_run and p.noise_interlude(self.sim.time)
-                           else COLORS["player"], self.center(p.pos), World.CELL_SIZE // 2 - 5)
-        pygame.draw.circle(self.screen, STATE_COLOR[a.state], self.center(a.pos), World.CELL_SIZE // 2 - 3)
-        pygame.draw.circle(self.screen, COLORS["alien"], self.center(a.pos), World.CELL_SIZE // 2 - 8)
+   
+        # init rotasi gambar tikus
+        if not hasattr(self, 'last_p_pos'):
+            self.last_p_pos = (p.pos[0], p.pos[1])
+            self.p_angle = 0 # asumsi hadap kanan
+            
+        # mencari arah gerakan
+        dx = p.pos[0] - self.last_p_pos[0]
+        dy = p.pos[1] - self.last_p_pos[1]
+        
+        # sudut putar (Pygame berputar berlawanan arah jarum jam)
+        if dx > 0: self.p_angle = 90        # Kanan
+        elif dx < 0: self.p_angle = -90     # Kiri
+        elif dy > 0: self.p_angle = 0       # Bawah
+        elif dy < 0: self.p_angle = 180     # Atas
+        
+        # simpan posisi saat ini untuk pengecekan berikutnya
+        self.last_p_pos = (p.pos[0], p.pos[1])
+        
+        # putar gambar tikus sesuai sudut
+        rotated_tikus = pygame.transform.rotate(self.img_player, self.p_angle)
+        
+        # 1. Gambar Player (Tikus yang sudah diputar)
+        self.screen.blit(rotated_tikus, (p.pos[0] * World.CELL_SIZE, p.pos[1] * World.CELL_SIZE))
+        
+        # 2. Cek status Kucing
+        if a.state == "PATROL":
+            current_cat_img = self.img_cat_patrol
+        elif a.state == "INVESTIGATE":
+            current_cat_img = self.img_cat_invest
+        elif a.state == "HUNT":
+            current_cat_img = self.img_cat_hunt
+        else:
+            current_cat_img = self.img_cat_patrol
+            
+        # 3. Gambar Alien (Kucing)
+        self.screen.blit(current_cat_img, (a.pos[0] * World.CELL_SIZE, a.pos[1] * World.CELL_SIZE))
 
     def draw_hud(self):
         s, a, p = self.sim, self.sim.alien, self.sim.player

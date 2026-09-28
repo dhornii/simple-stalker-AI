@@ -7,15 +7,14 @@ import yaml
 from collections import deque
 
 default = {
+    # Generator
     'gen_rad': 20,
     'gen_cd': 10.0,
 
+    # World
     'cell_size': 40,
     'move_dir': [(1, 0), (-1, 0), (0, 1), (0, -1)],
     'map': [ 
-        # N: noise generator (selanjutnya disebut 'generator' aja)
-        # o: obstacle. membatasi langkah saja 
-        # #: wall. membatasi langkah dan vision
         "####################", 
         "#P....#.....o......#",
         "#.....#............#",
@@ -42,52 +41,52 @@ world_config = config.get('World', {})
 class Generator:
     """
     Objek yang bisa menghasilkan suara untuk mengecoh alien (stalker agent),
-    bisa nyala otomatis setelah malfungsi atau di-trigger manual sama playernya.
+    bisa nyala otomatis lalu cooldown sendiri atau di-trigger manual sama playernya.
+
+    2 State:
+        1. unavailable: saat cooldown atau setelah timer random malfungsi habis
+        2. available: saat cooldown habis tapi timer random malfungsi belum habis (bisa dinyalakan oleh player)
 
     @Init_Params:
-        **`pos`**: koordinat tile (X-Y) tempat generator
+        pos: koordinat tile (X-Y) tempat generator dibentuk
 
     @Attributes:
-        **`pos (tuple)`**: koordinat tile (X-Y) objek ini berdasarkan tiles di map
-        **`cooldown (float)`**: detik. jeda waktu sampai bisa dinyalakan lagi
-        **`malfunction_time (float)`**: detik. jeda waktu otomatis dan random 8 - 13 detik
-
-    **inisiasilasi** class ini butuh input **`pos`**.
+        **NAMA** | **SATUAN**. **DESKRIPSI**
+        GEN_RADIUS | tile. radius luas noise hasil generator
+        GEN_COOLDOWN | detik. jeda waktu sampai ready lagi
 
     catatan tentang posisi X-Y di pygame --> [Help! How Do I move An Image](https://www.pygame.org/docs/tut/MoveIt.html?highlight=position)
     section *'Screen Coordinates'*
     """
-
-    
-    # konstanta class generator
-    GEN_RADIUS   = gen_config.get('radius', default['gen_rad'])         # (tile) radius luas noise hasil generator
-    GEN_COOLDOWN = gen_config.get('cooldown', default['gen_cd'])      # (detik)
+    GEN_RADIUS = gen_config.get('radius', default['gen_rad']) 
+    GEN_COOLDOWN = gen_config.get('cooldown', default['gen_cd'])
 
     def __init__(self, pos:tuple):
-
         self.pos = pos
         self.cooldown = 0.0
-        self.malfunction_time = random.uniform(8.0, 13.0) # random 8-13 detik generator malfungsi (kemungkinan tiap waktunya sama)
+        self.malfunc_timer = random.uniform(8.0, 13.0)
 
     def ready(self):
         return self.cooldown <= 0
 
     def trigger(self):  # kalau ditrigger manual
         self.cooldown = self.GEN_COOLDOWN
-        self.malfunction_time = random.uniform(8.0, 13.0)
+        self.malfunc_timer = random.uniform(8.0, 13.0)
 
     def tick_update(self, dt:float):
         """
-        update waktu cooldown atau malfungsinya tiap tick (periode) game.
+        Return True kalau generator nyala otomatis. Selain itu
+        method ini mengupdate cooldown dan timer generator tiap 
+        tick/frame aja.
 
         @params:
             dt: periode (detik), waktu untuk update frame/tick 
         """
         self.cooldown = max(0.0, self.cooldown - dt)
-        self.malfunction_time -= dt
+        self.malfunc_timer -= dt
 
-        if self.malfunction_time <= 0 and self.ready():
-            # fitur QoL: trigger otomatis kalau generator tidak malfungsi
+        if self.malfunc_timer <= 0 and self.ready():
+            # fitur QoL: generator nyala secara otomatis lalu malfungsi (cooldown)
             self.trigger()
             return True
         
@@ -97,27 +96,27 @@ class World:
     """
     Mengatur semua mekanisme terkait map dan world game secara umum, contohnya berupa sifat-sifat tile in-game serta
     bagaimana interaksinya terhadap player. Implementasi Breadth First Search (BFS) ada  di method class ini
-    (tepatnya 2 method akhir: **`bfs_path`** dan **`bfs_dist`**) sebagai pembentuk path jalan agent alien.
+    (2 method akhir: bfs_path dan bfs_dist) sebagai pembentuk path jalan agent alien.
 
     Sisa method mengatur bagaimana alien dapat melihat playernya dan sistem + mekanisme tile (e.g., *walkable*, *is_wall/menutup line of sight*,
     dan *boundary check*)
     
     @Attributes:
-        **`tiles (list)`**: list 2 dimensi untuk mengakses koordinat petak/tile tertentu
-        **`generators (list)`**: list seluruh koordinat yang ditempati generator
-        **`player_start (tuple)`**: koordinat spawn player. diisi otomatis berdasarkan **`map_layout`**
-        **`alien_start (tuple)`**: koordinat spawn alien. diisi otomatis berdasarkan **`map_layout`**
-        **`exit (tuple)`**: koordinat tile exit. diisi otomatis berdasarkan **`map_layout`**
-        **`walkalbe_tiles (list)`**: list semua koordinat tile *walkable*. diisi otomatis berdasarkan **`map_layout`**
+        **NAMA** | **SATUAN**. **DESKRIPSI**
+        CELL_SIZE | pixel. ukuran satu tile = CELL_SIZE * CELL_SIZE
+        MAP | -. desain map
+        MAP_W | tile. panjang map
+        MAP_H | tile. lebar map
+        MOVE_DIR | -. tuple berisi arah jalan (4 macam sesuai arrow-keys)
     """
 
-    CELL_SIZE = world_config.get('cell_size', default['cell_size'])   # (pixel) ukuran tile = CELL_SIZE * CELL_SIZE
-    MAP       = world_config.get('map', default['map'])
-    MAP_W     = len(MAP[0])
-    MAP_H     = len(MAP)          
+    CELL_SIZE = world_config.get('cell_size', default['cell_size'])
+    MAP = world_config.get('map', default['map'])
+    MAP_W = len(MAP[0])
+    MAP_H = len(MAP)          
 
-    MOVE_DIR  = world_config.get('move_dir', default['move_dir'])
-    MOVE_DIR  = [tuple(item) for item in MOVE_DIR]
+    MOVE_DIR = world_config.get('move_dir', default['move_dir'])
+    MOVE_DIR = [tuple(item) for item in MOVE_DIR]
 
     def __init__(self):
 
@@ -150,27 +149,18 @@ class World:
 
     # == Kelompok Utilities Terkait Tile Map ==
     def boundary_check(self, x:int, y:int):
-        """
-        return True kalau koordinat (x,y) ada di dalam map
-        """
+        """return True kalau koordinat (x,y) ada di dalam map"""
         return (0 <= x < self.MAP_W) and (0 <= y < self.MAP_H)
 
     def walkable(self, x:int, y:int):
-        """
-        return True kalau koordinat (x,y) bukan obstacle, wall, atau generator
-        """
+        """return True kalau koordinat (x,y) bukan obstacle, wall, atau generator"""
         return self.boundary_check(x, y) and self.tiles[y][x] not in "#oN"
 
     def is_wall(self, x, y):
         return self.tiles[y][x] == "#"
 
     def walkable_neighbors(self, coord:tuple):
-        """
-        return list koordinat yang walkable di sekitar coord
-
-        @Params:
-            coord: tuple (x,y) yang akan dicek
-        """
+        """return list koordinat yang walkable di sekitar **`coord`**"""
         x, y = coord
         nearby_walkable = []
 
@@ -182,11 +172,12 @@ class World:
     
 
     # == Kelompok Utilities Terkait Sight Antara Player dengan Alien == | Untuk menentukan apakah alien melihat player
-    def bresenham_line(self, start:tuple, end:tuple):
+    @staticmethod
+    def bresenham_line(start:tuple, end:tuple):
         """
         algoritma [garis bresenham](https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm): 
         
-        bentuk garis lurus dari alien menuju player lalu
+        bentuk garis lurus di antara start ke end,
         catat tile mana saja yang paling tepat untuk bentuk aproksimasi garis tersebut.
 
         @params:
@@ -206,7 +197,7 @@ class World:
         step_y = 1 if y0 < y1 else -1
 
         vertically_dom = (dy > dx)
-        if vertically_dom:
+        if vertically_dom:  # apakah vertically dominant (garis lebih tegak daripada mendatar)
             dx, dy = dy, dx
 
         decision_point = 2 * dy - dx
@@ -233,9 +224,7 @@ class World:
         return points
 
     def line_of_sight(self, start:tuple, end:tuple):
-        """
-        Return True kalau tidak ada wall di sepanjang tile hasil bresenham.
-        """
+        """Return True kalau tidak ada wall di sepanjang tile hasil bresenham"""
         return not any(self.is_wall(*p) for p in self.bresenham_line(start, end)[1:-1])
 
     def visible(self, start:tuple, end:tuple, vision_range:float):
@@ -246,9 +235,7 @@ class World:
         return (math.dist(start, end) <= vision_range) and (self.line_of_sight(start, end))
 
     def visible_cells(self, origin:tuple, vision_range:float):
-        """
-        Return list semua tile yang termasuk dalam radius jangkauan vision dan bisa dilihat.
-        """
+        """Return list semua tile yang termasuk dalam radius jangkauan vision dan tidak terhalang wall"""
         x_org, y_org = origin
         r = int(vision_range)
         visible_cells = []
@@ -273,20 +260,17 @@ class World:
         """
         if start == goal:
             return []
-
+        
         # dictionary child ke parent dari satu tile untuk catat tile yang sudah dikunjungi
         # key adalah child | data adalah parent
         # child: parent
-        prev = {
-            start: None
-        }
+        prev = {start: None}
 
         queue = deque([start])  # inisialisasi Double-Ended queue
         found = False
 
         while queue:
             current = queue.popleft()
-
             if current == goal:
                 found = True
                 break
@@ -305,13 +289,11 @@ class World:
             path.append(current)    # append child dari prev
             current = prev[current] # pindah ke parentnya
 
-        path.reverse() 
+        path.reverse() # urutan awalnya dari tujuan ke start, jadi perlu reverse
         return path
 
     def bfs_dist(self, start:tuple):
-        """
-        Return dictionary berisi jarak terpendek dari start ke seluruh tile yang reachable.
-        """
+        """Return dictionary berisi jarak dari start ke semua tile yang bisa dijangkau"""
  
         dist = {start: 0}
         queue = deque([start])
@@ -324,5 +306,5 @@ class World:
 
                     dist[n] = dist[current] + 1 # hitung jarak + 1 setiap mengunjungi tile baru
                     queue.append(n)
-        
+
         return dist
